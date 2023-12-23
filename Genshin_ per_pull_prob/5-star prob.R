@@ -5,9 +5,12 @@ library(ggplot2)
 library(ggtext)
 library(showtext)
 
+script_path <- dirname(rstudioapi::getSourceEditorContext()$path) # Path of current script file
+setwd(script_path)
+
 # Load Data -------------
 # Data from "https://genshin.gamedot.org/?mid=board&target=view&board=tip&post=290"
-raw <- read.csv("C:/R/Rwd/Plots/Genshin/5-star prob.csv", header = F)  # Relevant File Path
+raw <- read.csv("./5-star prob.csv", header = F)  # Relevant File Path
 
 
 # Load Fonts -------------
