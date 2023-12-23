@@ -2,13 +2,9 @@
 ## date: "**2023-12-23**"
 
 ----
+[<img src="seoul_plot.png">](./girafe_map_int.html),
+----
 
-{% include README.html %}
-
-```{=html}
-<div id="htmlwidget-b5b991188713037332db" style="width:120%;height:550px;" class="widgetframe html-widget"></div>
-<script type="application/json" data-for="htmlwidget-b5b991188713037332db">{"x":{"url":"README_files/figure-html//widgets/widget_unnamed-chunk-2.html","options":{"xdomain":"*","allowfullscreen":false,"lazyload":false}},"evals":[],"jsHooks":[]}</script>
-```
 #### 서울특별시의 행정동별 평균 소득을 시각화하였습니다. 
 
 #### 참고해주세요:
