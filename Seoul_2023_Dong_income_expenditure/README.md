@@ -1,25 +1,15 @@
----
-title: "**서울특별시 행정동별 평균소득 데이터**"
-author: "**Tope**"
-date: "**2023-12-23**"
-output: 
-  html_document: 
-    keep_md: yes
-    css: style.css
-      
----
+# 서울특별시 행정동별 평균소득 데이터
+## date: "**2023-12-23**"
 
+----
 
-
-
-
-
+{% include_relative README.html}
 
 ```{=html}
 <div id="htmlwidget-b5b991188713037332db" style="width:120%;height:550px;" class="widgetframe html-widget"></div>
 <script type="application/json" data-for="htmlwidget-b5b991188713037332db">{"x":{"url":"README_files/figure-html//widgets/widget_unnamed-chunk-2.html","options":{"xdomain":"*","allowfullscreen":false,"lazyload":false}},"evals":[],"jsHooks":[]}</script>
 ```
-#### **서울특별시의 행정동별 평균 소득을 시각화하였습니다. **
+#### 서울특별시의 행정동별 평균 소득을 시각화하였습니다. 
 
 #### 참고해주세요:
 행정동별 소득 지출에 관한 데이터가 "raw_seoul" 객체입니다. "raw_seoul" 객체 중 "quarter" == 20231 조건을 만족하는 데이터를 "seoul_20231" 객체에 저장하였습니다.<br>
@@ -49,7 +39,7 @@ seoul_20231_updated[nrow(seoul_20231_updated), 4:16] <- seoul_20231_updated[283,
 seoul_20231_updated[nrow(seoul_20231_updated), 17] <- "1174052600"
 ```
 
-#### **Mean income per 행정동 (dong of administration) in Seoul was visualized. **
+#### Mean income per 행정동 (dong of administration) in Seoul was visualized. 
 
 #### NOTE:
 Income and expenditure data per 행정동 is in the "raw_seoul" object. I focused on the data of "quarter" == 20231, thus the data satisfying the conditon was saved to "seoul_20231" object.<br>
