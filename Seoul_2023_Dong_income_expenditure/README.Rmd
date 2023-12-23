@@ -1,0 +1,343 @@
+---
+title: "**서울특별시 행정동별 평균소득 데이터**"
+author: "**Tope**"
+date: "**2023-12-23**"
+output: 
+  html_document: 
+    keep_md: yes
+    css: style.css
+      
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, include=FALSE}
+## Import library---------------------------
+library(tidyverse)
+library(plyr)
+library(showtext)
+library(ggtext)
+library(ggrepel)
+library(ggsflabel) # devtools::install_github("yutannihilation/ggsflabel")
+library(sf) # import and use .shp file
+library(shiny)
+library(ggiraph) # Interactive plot
+library(scales)
+library(htmlwidgets)
+options(scipen = 999) # Disable scientific notation.
+
+## Fonts---------------------------------------------------
+font_add_google(name = "Nanum Gothic", family = "nanum")
+font_add_google(name = "Noto Sans KR", family = "notosans")
+font_add_google(name = "Roboto", family = "roboto")
+sysfonts::font_add(family = "Font Awesome 6 Brands", # Social media icon fonts
+                   regular = "C:/R/Rwd/fonts/Font-Awesome-6-Brands-Regular-400.otf")
+showtext_auto()
+
+main_font <- "notosans"
+num_font <- "roboto"
+
+
+## Colors -------------------------------------------------
+bg_col <- "#eeeeee"
+text_col <- "grey10"
+lighter_text_col <- "#7d7d7d"
+major_grid_col <- "#bebebe"
+minor_grid_col <- "#d6d6d6"
+
+## Data Import---------------------------------------------
+raw_seoul <- read.csv("./Seoul_income_expendit_dong.csv",fileEncoding = "euc-kr") #https://data.seoul.go.kr/dataList/OA-22168/S/1/datasetView.do
+head(raw_seoul)
+
+## Data Wrangling -----------------------------------------
+# Seoul Income Expenditure per Dong Dataset
+seoul <- raw_seoul
+colnames(seoul) <- c("quarter", "dong_code", "dong_name", "mean_income", "income_interval",
+                         "sum_e", "grocery_e", "clothes_e", "life_e", "medical_e",
+                         "transport_e", "edu_e", "play_e", "hobby_e", "etc_e", "food_e")
+seoul_20231 <- dplyr::filter(seoul, quarter == 20231)
+seoul_20231 <- as_tibble(seoul_20231)
+seoul_20231$EMD_CD <- as.character(paste0(seoul_20231$dong_code, "00"))
+
+head(seoul_20231)
+dim(seoul_20231)
+# Raw data is outdated than map data. Updated the raw data: EMD_CD (17th col) and dong_name (3rd col)
+seoul_20231_updated <- seoul_20231
+seoul_20231_updated[seoul_20231_updated$dong_code == 11680740, 17] <- "1168067500" # 일원2동 -> 개포3동 renamed
+seoul_20231_updated[seoul_20231_updated$dong_code == 11680740, 3] <-  "개포3동" # 일원2동 -> 개포3동 renamed
+seoul_20231_updated[seoul_20231_updated$dong_code == 11740520, 17] <- "1174052500" # 상일동 -> 상일제1동 renamed
+seoul_20231_updated[seoul_20231_updated$dong_code == 11740520, 3] <- "상일제1동" # 상일동 -> 상일제1동 renamed
+seoul_20231_updated[nrow(seoul_20231_updated)+1, ] <- NA # New empty row added
+seoul_20231_updated[nrow(seoul_20231_updated), 1:3] <- list(20231, 11740526,"상일제2동") # 상일제2동 row added (South region of 강일동 became 상일제2동)
+seoul_20231_updated[nrow(seoul_20231_updated), 4:16] <- seoul_20231_updated[283, 4:16] # 상일제2동 data is the same as 강일동. 
+seoul_20231_updated[nrow(seoul_20231_updated), 17] <- "1174052600"
+
+
+# Seoul Dong polygon Data
+map_seoul <- st_read("./TL_SCCO_GEMD.shp", options = "ENCODING=euc-kr") # Data last updated in 2022-11
+EMD_CD_coded <- ddply(map_seoul, .(EMD_CD), function(row){
+                          row$dong_code <- (gsub('.{2}$', "", row$EMD_CD))
+                          })
+# Combine sf and data
+combined_data <- left_join(map_seoul, seoul_20231_updated, by = "EMD_CD") # The order of x and y matters.
+combined_data |> filter(is.na(dong_code)) 
+
+# Seoul Gu polygon Data
+map_seoul_gu <- st_read("./TL_SCCO_SIG.shp", options = "ENCODING=euc-kr")# Map at 2022-11
+
+## Texts --------------------------------------------------
+# Social Info
+github_icon <- "&#xf09b" #unicode f09b, used for HTML so &#x added.
+github_username <- "gaba-tope"
+twit_icon <- "&#xf099"
+twit_username <- "@tope_ezia"
+social_caption <- glue::glue(
+  "<span style='font-family:\"Font Awesome 6 Brands\";'>{github_icon};</span>
+  <span style='color: #E30B5C; font-family:\"roboto\";'>{github_username}</span>
+  <span style='font-family:\"Font Awesome 6 Brands\";'>{twit_icon};</span>
+  <span style='color: #E30B5C; font-family:\"roboto\";'>{twit_username}</span>"
+)
+# Map Plot Text
+title_map <- "2023년 서울특별시 행정동별 평균 소득"
+data_info <- "서울특별시 상권분석서비스 (소득소비) (2023-11-13)"
+cap_map <- glue::glue(
+  "<span style='font-family:\"roboto\";'>**Data**</span>: {data_info}<br>
+  <span style='font-family:\"roboto\";'>**Graphic**: Tope </span>{social_caption}")
+legend_map <- "평균 소득 (원)"
+
+## Themes -------------------------------------------------
+# Map Theme
+map_theme <- theme(
+  plot.title.position = "plot", 
+  plot.caption.position = "plot",
+  plot.background = element_rect(fill = bg_col, colour = bg_col),
+  panel.background = element_rect(fill = bg_col, colour = bg_col),
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  plot.margin = margin(10, 10, 10, 10),
+  plot.title = element_textbox_simple(
+    colour= text_col,
+    face = "bold",
+    family = main_font,
+    lineheight = 0.5,
+    size = 40,
+    margin = margin(b = 2, t = 2) 
+  ),
+  plot.subtitle = element_textbox_simple(
+    colour = text_col,
+    family = main_font,
+    size = 30,
+    margin = margin(b = 10)
+  ),
+  plot.caption = element_textbox_simple(
+    colour= text_col,
+    lineheight = 0.5,
+    family = main_font,
+    margin = margin(t = 13, b = 5, l = 5),
+    size = 30
+  ),
+  axis.text.x = element_blank(), # No axis text and title.
+  axis.text.y = element_blank(),
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  axis.ticks = element_blank(),
+  legend.text = element_text(colour = text_col,
+                             family = num_font,
+                             size = 25,
+                             margin = margin(l = -5, r = -10)
+  ),#
+  legend.title = element_text(colour = text_col,
+                              family = main_font,
+                              size = 30,
+                              lineheight = 0.5,
+                              face = "bold",
+                              margin = margin(b= -10)
+  ), #face = "bold"
+  legend.background = element_rect(fill = bg_col)
+)
+# Theme for interactive Map
+map_int_theme <- theme(
+  plot.title.position = "plot", 
+  plot.caption.position = "plot",
+  plot.background = element_rect(fill = bg_col, colour = bg_col),
+  panel.background = element_rect(fill = bg_col, colour = bg_col),
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  plot.margin = margin(10, 10, 10, 10),
+  plot.title = element_textbox_simple(
+    colour= text_col,
+    face = "bold",
+    family = main_font,
+    lineheight = 0.5,
+    size = 40,
+    margin = margin(b = 2, t = 2) 
+  ),
+  plot.subtitle = element_textbox_simple(
+    colour = text_col,
+    family = main_font,
+    size = 30,
+    margin = margin(b = 10)
+  ),
+  plot.caption = element_textbox_simple(
+    colour= text_col,
+    lineheight = 0.5,
+    family = main_font,
+    margin = margin(t = 13, b = 5, l = 5),
+    size = 30
+  ),
+  axis.text.x = element_blank(), # No axis text and title.
+  axis.text.y = element_blank(),
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  axis.ticks = element_blank(),
+  legend.text = element_text(colour = text_col,
+                             family = num_font,
+                             size = 25,
+                             margin = margin(l = -5)
+  ),#
+  legend.title = element_text(colour = text_col,
+                              family = main_font,
+                              size = 30,
+                              lineheight = 0.5,
+                              face = "bold",
+                              margin = margin(b = -10)
+  ), #face = "bold"
+  legend.background = element_rect(fill = bg_col),
+  legend.key.width = unit(1.5,"cm"),
+  legend.key.height = unit(2,"cm")
+  
+)
+
+
+
+## Plots --------------------------------------------------
+# Designed Map w/ {ggplot2}
+seoul_plot <-   ggplot()+
+  geom_sf(data = combined_data, aes(fill = mean_income), color = major_grid_col, linewidth = 0.1)+
+  geom_sf(data = map_seoul_gu, color = text_col, alpha = 0 )+
+  scale_fill_distiller(palette = "Purples", direction = 1, labels = scales::label_comma(),
+                       limits = c(2000000, 7500000), breaks = seq(2000000, 7500000, 1000000))+
+  geom_sf_text(data = map_seoul_gu,
+                aes(label = ifelse(!(SIG_KOR_NM %in% c("양천구", "강남구", "동작구", "성북구")), SIG_KOR_NM, "")), 
+                colour = "black")+ # "양천구" text overlaps with the border. "강남구" text is on dark bg.
+                                       #  "동작구" and "성북구" not centered. 
+  geom_sf_text_repel(data = map_seoul_gu, aes(label = ifelse(SIG_KOR_NM == "양천구", SIG_KOR_NM, "")), 
+                     colour = "black", nudge_x = -10, nudge_y = -10 # 양천구
+                     )+
+  geom_sf_text_repel(data = map_seoul_gu, aes(label = ifelse(SIG_KOR_NM == "강남구",  SIG_KOR_NM, "")),
+                     colour = "black", nudge_x = -30 , nudge_y = +20
+                     )+ # 강남구
+  geom_sf_text_repel(data = map_seoul_gu, aes(label = ifelse(SIG_KOR_NM == "동작구",  SIG_KOR_NM, "")),
+                     colour = "black", nudge_x = 0 , nudge_y = +30
+                    )+ # 동작구
+  geom_sf_text_repel(data = map_seoul_gu, aes(label = ifelse(SIG_KOR_NM == "성북구",  SIG_KOR_NM, "")),
+                     colour = "black", nudge_x = -10 , nudge_y = -20
+                    )+ # 성북구
+  labs(title = title_map,
+     caption = cap_map,
+    fill = legend_map)+
+  map_theme
+
+
+# Interactive Map with {ggiraph}
+seoul_plot_int <-   ggplot()+
+  geom_sf_interactive(data = combined_data, aes(fill = mean_income),
+                      tooltip =paste(combined_data$EMD_KOR_NM, ":", comma(combined_data$mean_income),"원"),
+                      color = lighter_text_col, linewidth = 0.5)+ 
+  geom_sf(data = map_seoul_gu, color = text_col, alpha = 0, linewidth = 1 )+
+  scale_fill_distiller(palette = "Purples", direction = 1, labels = scales::label_comma(),
+                       limits = c(2000000, 7500000), breaks = seq(2000000, 7500000, 1000000))+
+  geom_sf_text(data = map_seoul_gu,
+               aes(label = ifelse(!(SIG_KOR_NM %in% c("양천구", "강남구", "동작구", "성북구")), SIG_KOR_NM, "")), 
+               colour = "black", size = 6)+ # "양천구" text overlaps with the border. "강남구" text is on dark bg.
+  #  "동작구" and "성북구" not centered. 
+  geom_sf_text_repel(data = map_seoul_gu, aes(label = ifelse(SIG_KOR_NM == "양천구", SIG_KOR_NM, "")), 
+                     colour = "black", nudge_x = -10, nudge_y = -10, size = 6 # 양천구
+  )+
+  geom_sf_text_repel(data = map_seoul_gu, aes(label = ifelse(SIG_KOR_NM == "강남구",  SIG_KOR_NM, "")),
+                     colour = "black", nudge_x = -40 , nudge_y = +30, size = 6
+  )+ # 강남구
+  geom_sf_text_repel(data = map_seoul_gu, aes(label = ifelse(SIG_KOR_NM == "동작구",  SIG_KOR_NM, "")),
+                     colour = "black", nudge_x = 0 , nudge_y = +30, size = 6
+  )+ # 동작구
+  geom_sf_text_repel(data = map_seoul_gu, aes(label = ifelse(SIG_KOR_NM == "성북구",  SIG_KOR_NM, "")),
+                     colour = "black", nudge_x = -10 , nudge_y = -20, size = 6
+  )+ # 성북구
+  labs(title = title_map,
+       caption = cap_map,
+       fill = legend_map)+
+  map_int_theme
+
+tooltip_css <- "background-color:#d8118c;color:white;padding:5px;border-radius:3px;"
+
+girafe_map_int <- girafe(ggobj = seoul_plot_int,
+       width_svg = 35, height_svg = 17) |> girafe_options(opts_hover(css = "fill:yellow;stroke:black;stroke-width:3px;"),
+                                                 opts_tooltip(css = tooltip_css, opacity = 1),
+                                                 opts_zoom(min = .7, max = 2)) 
+#saveWidget(girafe_map_int, file="girafe_map_int.html")
+
+```
+
+```{r, echo = F}
+widgetframe::frameWidget(girafe_map_int,
+                         width = "120%",
+                         height = "550px")
+```
+#### **서울특별시의 행정동별 평균 소득을 시각화하였습니다. **
+
+#### 참고해주세요:
+행정동별 소득 지출에 관한 데이터가 "raw_seoul" 객체입니다. "raw_seoul" 객체 중 "quarter" == 20231 조건을 만족하는 데이터를 "seoul_20231" 객체에 저장하였습니다.<br>
+
+"seoul_20231" 객체는 *"개포3동", "상일제1동", "상일제2동"의 데이터를 포함하지 않고* 있는데, 이는 데이터가 행정동 분리와 명칭 변경 이전에 작성되었기 때문인 것으로 보입니다.
+
+1. "seoul_20231"상의 "일원2동"은 2022년 12월 23일에 "개포3동"으로 명칭이 변경되었습니다. 이에 따라 "seoul_20231"상의 "dong_name"변수를 "일원2동"에서 "개포3동"으로 변경하고 해당 "dong_code"와 "EMD_CD" 변수 또한 변경하여 "seoul_20231_updated" 객체에 저장하였습니다. 변경된 부분에 관하여 다음의 코드를 보세요.
+```{r, echo = T, eval = F}
+seoul_20231_updated[seoul_20231_updated$dong_code == 11680740, 17] <- "1168067500" # 일원2동 -> 개포3동 renamed
+seoul_20231_updated[seoul_20231_updated$dong_code == 11680740, 3] <-  "개포3동" # 일원2동 -> 개포3동 renamed
+```
+
+2. "seoul_20231"상의 "상일동"은 2021년 07월 01일에 "상일제1동"으로 명칭이 변경되었습니다. 이에 따라 "seoul_20231"상의 "dong_name"변수를 "상일동"에서 "상일제1동"으로 변경하고 해당 "dong_code"와 "EMD_CD" 변수 또한 변경하여 "seoul_20231_updated" 객체에 저장하였습니다. 변경된 부분에 관하여 다음의 코드를 보세요. 
+```{r, echo = T, eval = F}
+seoul_20231_updated[seoul_20231_updated$dong_code == 11740520, 17] <- "1174052500" # 상일동 -> 상일제1동 renamed
+seoul_20231_updated[seoul_20231_updated$dong_code == 11740520, 3] <- "상일제1동" # 상일동 -> 상일제1동 renamed
+```
+
+3."seoul_20231"상의 "강일동"의 남쪽 지역은 2021년 07월 01일에 "상일제2동"으로 분리되었습니다. 이에 따라 "seoul_20231_updated" 객체에 "dong_name"을 "상일제2동"으로, 해당하는 "dong_code"와 "EMD_CD"를 넣어 새로운 행을 추가하였습니다. 이때 "상일제2동"의 소득-지출 데이터는 "강일동"의 데이터를 복사하여 그대로 붙여넣었음을 참고해주세요. 변경된 부분에 관하여 다음의 코드를 보세요. 
+```{r, echo = T, eval = F}
+
+seoul_20231_updated[nrow(seoul_20231_updated)+1, ] <- NA # New empty row added
+seoul_20231_updated[nrow(seoul_20231_updated), 1:3] <- list(20231, 11740526,"상일제2동") # 상일제2동 row added (South region of 강일동 became 상일제2동)
+seoul_20231_updated[nrow(seoul_20231_updated), 4:16] <- seoul_20231_updated[283, 4:16] # 상일제2동 data is the same as 강일동. 
+seoul_20231_updated[nrow(seoul_20231_updated), 17] <- "1174052600"
+```
+
+#### **Mean income per 행정동 (dong of administration) in Seoul was visualized. **
+
+#### NOTE:
+Income and expenditure data per 행정동 is in the "raw_seoul" object. I focused on the data of "quarter" == 20231, thus the data satisfying the conditon was saved to "seoul_20231" object.<br>
+
+Note that *"seoul_20231" object does not contain a row of "개포3동", "상일제1동", and "상일제2동" in dong_name column*. This is because the "raw_seoul" dataset was made before 행정동 are renamed and separated.
+
+1. "일원2동" in the "raw_seoul" object is renamed to "개포3동" in 2022-12-23. The update was made to rename "일원2동" to "개포3동" and change the corresponding "dong_code" variable and "EMD_CD" variable, which are saved to "seoul_20231_updated" object. See the following script.
+```{r, echo = T, eval = F}
+seoul_20231_updated[seoul_20231_updated$dong_code == 11680740, 17] <- "1168067500" # 일원2동 -> 개포3동 renamed
+seoul_20231_updated[seoul_20231_updated$dong_code == 11680740, 3] <-  "개포3동" # 일원2동 -> 개포3동 renamed
+```
+
+2. "상일동" in the "raw_seoul" object is renamed to "상일제1동" in 2021-07-01. The update was made to rename "상일동" to "상일제1동" and change the corresponding "dong_code" variable and "EMD_CD" variable, which are saved to "seoul_20231_updated" object. See the following script.
+```{r, echo = T, eval = F}
+seoul_20231_updated[seoul_20231_updated$dong_code == 11740520, 17] <- "1174052500" # 상일동 -> 상일제1동 renamed
+seoul_20231_updated[seoul_20231_updated$dong_code == 11740520, 3] <- "상일제1동" # 상일동 -> 상일제1동 renamed
+```
+
+3. South region of "강일동" in the "raw_seoul"was separated from "강일동" and named "상일제2동" in 2021-07-01. The update was made to create a new row that specify "상일제2동" and to add the corresponding "dong_code" variable and "EMD_CD" variable. Plus, the data of "상일제2동" was copied from that of "강일동". The changes are saved to "seoul_20231_updated" object. See the following script.
+```{r, echo = T, eval = F}
+
+seoul_20231_updated[nrow(seoul_20231_updated)+1, ] <- NA # New empty row added
+seoul_20231_updated[nrow(seoul_20231_updated), 1:3] <- list(20231, 11740526,"상일제2동") # 상일제2동 row added (South region of 강일동 became 상일제2동)
+seoul_20231_updated[nrow(seoul_20231_updated), 4:16] <- seoul_20231_updated[283, 4:16] # 상일제2동 data is the same as 강일동. 
+seoul_20231_updated[nrow(seoul_20231_updated), 17] <- "1174052600"
+```
