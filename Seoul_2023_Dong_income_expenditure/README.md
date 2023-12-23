@@ -3,7 +3,7 @@
 
 ----
 
-{% include_relative README.html}
+{% include README.html %}
 
 ```{=html}
 <div id="htmlwidget-b5b991188713037332db" style="width:120%;height:550px;" class="widgetframe html-widget"></div>
